@@ -18,7 +18,7 @@ def load_students():
 # UART 초기화 함수
 def init_uart():
     try:
-        uart = serial.Serial("/dev/ttyACM1", 9600, timeout=1)
+        uart = serial.Serial("/dev/ttyACM0", 9600, timeout=1)
         return uart
     except serial.SerialException as e:
         print(f"UART 포트를 열 수 없습니다: {e}")

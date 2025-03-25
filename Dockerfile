@@ -1,30 +1,28 @@
-# Python 3.9 이미지 사용
+# Python 3.9 Slim 이미지를 기반으로 사용
 FROM python:3.9-slim
+
+# 필수 패키지 설치 (OpenGL 및 python 관련 패키지 설치)
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 # 작업 디렉토리 설정
 WORKDIR /app
 
-# 시스템 의존성 설치 (PyQt와 시리얼 통신을 위한 라이브러리 포함)
-RUN apt-get update && \
-    apt-get install -y \
-    libxcb-xinerama0 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxrandr2 \
-    libxss1 \
-    libxtst6 \
-    libegl1-mesa \
-    libxcb1 \
-    && rm -rf /var/lib/apt/lists/*
+# 로컬 파일을 컨테이너로 복사
+COPY . /app
 
-# 의존성 파일 복사
-COPY requirements.txt /app/
+# 가상환경 생성 (이 명령어는 이미 설치된 python3를 사용)
+RUN python3 -m venv .venv
 
-# 의존성 설치
-RUN pip install --no-cache-dir -r requirements.txt
+# 가상환경 활성화 및 패키지 설치
+RUN . .venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt
 
-# 애플리케이션 소스 코드 복사
-COPY . /app/
+# GUI를 위해 DISPLAY 환경변수 설정
+ENV DISPLAY=:0
 
-# PyQt 애플리케이션 실행
-CMD ["python", "main.py"]
+# 앱 실행
+CMD ["/app/.venv/bin/python", "main.py"]
