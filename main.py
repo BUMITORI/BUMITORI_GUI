@@ -1,10 +1,9 @@
 import sys
 import json
 import serial
-import threading
+import requests
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
-from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 # 학생 정보 불러오기
 def load_students():
@@ -40,13 +39,20 @@ class UartThread(QThread):
                 self.handle_rfid(rfid)
 
     def handle_rfid(self, rfid):
+        # 서버에 RFID 전송
+        try:
+            response = requests.post("https://bumitory.kro.kr/checkin", data={"rfid": rfid})
+            print(f"[서버 응답] {response.status_code}: {response.text}")
+        except requests.RequestException as e:
+            print(f"[요청 실패] RFID 전송 중 오류 발생: {e}")
+
+        # UI 표시 메시지 처리
         if rfid in self.students:
             name = self.students[rfid]
             message = f"{name} 출석이 완료되었습니다."
         else:
             message = "카드를 찍어주세요"
 
-        # UI 업데이트를 위해 시그널을 보냄
         self.message_signal.emit(message)
 
 class MainWindow(QWidget):
