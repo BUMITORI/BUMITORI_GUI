@@ -17,14 +17,13 @@ def load_students():
 # UART 초기화 함수
 def init_uart():
     try:
-        uart = serial.Serial("/dev/ttyACM0", 9600, timeout=1)
+        uart = serial.Serial("/dev/ttyAMA0", 9600, timeout=1)
         return uart
     except serial.SerialException as e:
         print(f"UART 포트를 열 수 없습니다: {e}")
         return None
 
 class UartThread(QThread):
-    # 시그널을 사용하여 UI 업데이트
     message_signal = pyqtSignal(str)
 
     def __init__(self, uart, students):
@@ -39,14 +38,21 @@ class UartThread(QThread):
                 self.handle_rfid(rfid)
 
     def handle_rfid(self, rfid):
-        # 서버에 RFID 전송
         try:
-            response = requests.post("https://bumitory.kro.kr/checkin", data={"rfid": rfid})
+            # 16진수 문자열을 10진수 정수로 변환
+            rfid_decimal = int(rfid, 16)
+
+            # 서버에 10진수 rfid 전송
+            response = requests.post(
+                "https://bumitori.duckdns.org/checkin",
+                data={"rfid": str(rfid_decimal)}
+            )
             print(f"[서버 응답] {response.status_code}: {response.text}")
+        except ValueError:
+            print(f"[변환 오류] RFID가 유효한 16진수 아님: {rfid}")
         except requests.RequestException as e:
             print(f"[요청 실패] RFID 전송 중 오류 발생: {e}")
 
-        # UI 표시 메시지 처리
         if rfid in self.students:
             name = self.students[rfid]
             message = f"{name} 출석이 완료되었습니다."
