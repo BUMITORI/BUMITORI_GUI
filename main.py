@@ -23,43 +23,47 @@ def init_uart():
         print(f"UART 포트를 열 수 없습니다: {e}")
         return None
 
+
 class UartThread(QThread):
-    message_signal = pyqtSignal(str)
+  message_signal = pyqtSignal(str)
 
-    def __init__(self, uart, students):
-        super().__init__()
-        self.uart = uart
-        self.students = students
+  def __init__(self, uart, students):
+    super().__init__()
+    self.uart = uart
+    self.students = students
 
-    def run(self):
-        while True:
-            if self.uart.in_waiting > 0:
-                rfid = self.uart.readline().decode("utf-8").strip()
-                self.handle_rfid(rfid)
+  def run(self):
+    while True:
+      if self.uart.in_waiting > 0:
+        data = self.uart.readline()
+        rfid = data.hex()  # 바이트 → 16진수 문자열
+        self.handle_rfid(rfid)
 
-    def handle_rfid(self, rfid):
-        try:
-            # 16진수 문자열을 10진수 정수로 변환
-            rfid_decimal = int(rfid, 16)
+  def handle_rfid(self, rfid):
+    print(f"[수신 RFID] {rfid}")
+    if not rfid:
+      return
 
-            # 서버에 10진수 rfid 전송
-            response = requests.post(
-                "https://bumitori.duckdns.org/checkin",
-                data={"rfid": str(rfid_decimal)}
-            )
-            print(f"[서버 응답] {response.status_code}: {response.text}")
-        except ValueError:
-            print(f"[변환 오류] RFID가 유효한 16진수 아님: {rfid}")
-        except requests.RequestException as e:
-            print(f"[요청 실패] RFID 전송 중 오류 발생: {e}")
+    try:
+      rfid_decimal = int(rfid, 16)
+      response = requests.post(
+        "https://bumitori.duckdns.org/checkin",
+        data={"rfid": str(rfid_decimal)}
+      )
+      print(f"[서버 응답] {response.status_code}: {response.text}")
+    except ValueError:
+      print(f"[변환 오류] RFID가 유효한 16진수 아님: {rfid}")
+    except requests.RequestException as e:
+      print(f"[요청 실패] RFID 전송 중 오류 발생: {e}")
 
-        if rfid in self.students:
-            name = self.students[rfid]
-            message = f"{name} 출석이 완료되었습니다."
-        else:
-            message = "카드를 찍어주세요"
+    if rfid in self.students:
+      name = self.students[rfid]
+      message = f"{name} 출석이 완료되었습니다."
+    else:
+      message = "카드를 찍어주세요"
 
-        self.message_signal.emit(message)
+    self.message_signal.emit(message)
+
 
 class MainWindow(QWidget):
     def __init__(self):
