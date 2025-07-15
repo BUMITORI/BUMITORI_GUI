@@ -74,13 +74,11 @@ class UartThread(QThread):
       print(f"[서버 응답] {response.status_code}: {response.text}")
 
       if response.status_code == 200:
-        self.message_signal.emit("✅ 입사 처리가 완료되었습니다", True)
-      else:
-        self.message_signal.emit("❌ 입사 처리에 실패했습니다", False)
+        self.message_signal.emit("정수환님 입사 처리가 완료되었습니다", True)
 
     except requests.RequestException as e:
       print(f"[요청 실패] 서버에 RFID 전송 중 오류 발생: {e}")
-      self.message_signal.emit("❌ 서버 연결 실패", False)
+      self.message_signal.emit("서버 연결 실패", False)
 
 
 class MainWindow(QWidget):
