@@ -11,10 +11,10 @@ def load_students():
         with open("students.json", "r", encoding="utf-8") as file:
             return json.load(file)
     except Exception as e:
-        print("students.json 파일을 열 수 없습니다.", e)
+        print("students.json 파일을 열 수 없습니다:", e)
         return {}
 
-# UART 초기화 함수
+# UART 초기화
 def init_uart():
     try:
         uart = serial.Serial("/dev/ttyAMA0", 9600, timeout=1)
@@ -23,47 +23,52 @@ def init_uart():
         print(f"UART 포트를 열 수 없습니다: {e}")
         return None
 
-
 class UartThread(QThread):
-  message_signal = pyqtSignal(str)
+    message_signal = pyqtSignal(str)
 
-  def __init__(self, uart, students):
-    super().__init__()
-    self.uart = uart
-    self.students = students
+    def __init__(self, uart, students):
+        super().__init__()
+        self.uart = uart
+        self.students = students
 
-  def run(self):
-    while True:
-      if self.uart.in_waiting > 0:
-        data = self.uart.readline()
-        rfid = data.hex()  # 바이트 → 16진수 문자열
-        self.handle_rfid(rfid)
+    def run(self):
+        while True:
+            if self.uart.in_waiting > 0:
+                data = self.uart.readline()
+                rfid_hex = data.hex().strip().lower()
 
-  def handle_rfid(self, rfid):
-    print(f"[수신 RFID] {rfid}")
-    if not rfid:
-      return
+                # 너무 짧은 값은 무시
+                if len(rfid_hex) < 8:
+                    continue
 
-    try:
-      rfid_decimal = int(rfid, 16)
-      response = requests.post(
-        "https://bumitori.duckdns.org/checkin",
-        data={"rfid": str(rfid_decimal)}
-      )
-      print(f"[서버 응답] {response.status_code}: {response.text}")
-    except ValueError:
-      print(f"[변환 오류] RFID가 유효한 16진수 아님: {rfid}")
-    except requests.RequestException as e:
-      print(f"[요청 실패] RFID 전송 중 오류 발생: {e}")
+                self.handle_rfid(rfid_hex)
 
-    if rfid in self.students:
-      name = self.students[rfid]
-      message = f"{name} 출석이 완료되었습니다."
-    else:
-      message = "카드를 찍어주세요"
+    def handle_rfid(self, rfid_hex):
+        print(f"[수신 RFID HEX] {rfid_hex}")
 
-    self.message_signal.emit(message)
+        try:
+            rfid_decimal = int(rfid_hex, 16)
+        except ValueError:
+            print(f"[무시됨] 유효하지 않은 16진수: {rfid_hex}")
+            return
 
+        try:
+            response = requests.post(
+                "https://bumitori.duckdns.org/checkin",
+                data={"rfid": str(rfid_decimal)}
+            )
+            print(f"[서버 응답] {response.status_code}: {response.text}")
+        except requests.RequestException as e:
+            print(f"[요청 실패] RFID 전송 중 오류 발생: {e}")
+
+        # UI 메시지 표시
+        if rfid_hex in self.students:
+            name = self.students[rfid_hex]
+            message = f"{name} 출석이 완료되었습니다."
+        else:
+            message = "카드를 찍어주세요"
+
+        self.message_signal.emit(message)
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -78,15 +83,11 @@ class MainWindow(QWidget):
         self.layout.addWidget(self.label)
         self.setLayout(self.layout)
 
-        # 학생 정보 로드
         self.students = load_students()
-
-        # UART 초기화
         self.uart = init_uart()
         if self.uart is None:
             sys.exit(1)
 
-        # UART 데이터 읽기 스레드 시작
         self.uart_thread = UartThread(self.uart, self.students)
         self.uart_thread.message_signal.connect(self.update_message)
         self.uart_thread.start()
