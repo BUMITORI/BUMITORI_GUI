@@ -2,25 +2,26 @@ import sys
 import json
 import serial
 import requests
+import time
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
-# 학생 정보 불러오기
+# Load student data from JSON
 def load_students():
     try:
         with open("students.json", "r", encoding="utf-8") as file:
             return json.load(file)
     except Exception as e:
-        print("students.json 파일을 열 수 없습니다:", e)
+        print("Error: Failed to load students.json:", e)
         return {}
 
-# UART 초기화
+# Initialize UART
 def init_uart():
     try:
         uart = serial.Serial("/dev/ttyAMA0", 9600, timeout=1)
         return uart
     except serial.SerialException as e:
-        print(f"UART 포트를 열 수 없습니다: {e}")
+        print(f"Error: Failed to open UART port: {e}")
         return None
 
 class UartThread(QThread):
@@ -30,6 +31,8 @@ class UartThread(QThread):
         super().__init__()
         self.uart = uart
         self.students = students
+        self.last_rfid = None
+        self.last_time = 0  # Time of last valid scan
 
     def run(self):
         while True:
@@ -37,19 +40,27 @@ class UartThread(QThread):
                 data = self.uart.readline()
                 rfid_hex = data.hex().strip().lower()
 
-                # 너무 짧은 값은 무시
+                # Ignore short or invalid input
                 if len(rfid_hex) < 8:
                     continue
 
+                current_time = time.time()
+
+                # Ignore if scanned within 3 seconds
+                if (current_time - self.last_time) < 3:
+                    continue
+
+                self.last_rfid = rfid_hex
+                self.last_time = current_time
                 self.handle_rfid(rfid_hex)
 
     def handle_rfid(self, rfid_hex):
-        print(f"[수신 RFID HEX] {rfid_hex}")
+        print(f"[RFID received] {rfid_hex}")
 
         try:
             rfid_decimal = int(rfid_hex, 16)
         except ValueError:
-            print(f"[무시됨] 유효하지 않은 16진수: {rfid_hex}")
+            print(f"[Ignored] Invalid hex string: {rfid_hex}")
             return
 
         try:
@@ -57,31 +68,30 @@ class UartThread(QThread):
                 "https://bumitori.duckdns.org/checkin",
                 data={"rfid": str(rfid_decimal)}
             )
-            print(f"[서버 응답] {response.status_code}: {response.text}")
+            print(f"[Server response] {response.status_code}: {response.text}")
         except requests.RequestException as e:
-            print(f"[요청 실패] RFID 전송 중 오류 발생: {e}")
+            print(f"[Request failed] Error while sending RFID to server: {e}")
 
-        # UI 메시지 표시
         if rfid_hex in self.students:
             name = self.students[rfid_hex]
-            message = f"{name} 출석이 완료되었습니다."
+            message = f"Check-in completed: {name}"
         else:
-            message = "카드를 찍어주세요"
+            message = "Please tap your card"
 
         self.message_signal.emit(message)
 
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("출석 관리 시스템")
+        self.setWindowTitle("Check-in Management System")
         self.setGeometry(100, 100, 300, 150)
 
-        self.label = QLabel("카드를 찍어주세요", self)
+        self.label = QLabel("Please tap your card", self)
         self.label.setAlignment(Qt.AlignCenter)
 
-        self.layout = QVBoxLayout()
-        self.layout.addWidget(self.label)
-        self.setLayout(self.layout)
+        layout = QVBoxLayout()
+        layout.addWidget(self.label)
+        self.setLayout(layout)
 
         self.students = load_students()
         self.uart = init_uart()
